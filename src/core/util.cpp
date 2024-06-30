@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "util.h"
-#include "packman.h"
-#include <qcryptographichash.h>
-#include <qnamespace.h>
-#include <qregularexpression.h>
+#include "core/util.h"
+#include "core/packman.h"
 #include <QSysInfo>
 
 extern "C" {
@@ -123,9 +120,12 @@ static int callback(void *jsonDoc, int argc, char **argv, char **cols) {
 }
 
 QJsonArray SelectFromDatabase(sqlite3 *db, const QString &sql) {
+  static QMutex select_lock;
   QJsonArray arr;
   auto bytes = sql.toUtf8();
+  select_lock.lock();
   sqlite3_exec(db, bytes.data(), callback, (void *)&arr, nullptr);
+  select_lock.unlock();
   return arr;
 }
 
@@ -172,6 +172,23 @@ static void writeDirMD5(QFile &dest, const QString &dir,
   }
 }
 
+static void writeFkVerMD5(QFile &dest) {
+  QFile flist("fk_ver");
+  if (flist.exists() && flist.open(QIODevice::ReadOnly)) {
+    flist.readLine();
+    QStringList allNames;
+    while (true) {
+      QByteArray bytes = flist.readLine().simplified();
+      if (bytes.isNull()) break;
+      allNames << QString::fromLocal8Bit(bytes);
+    }
+    allNames.sort();
+    foreach(auto s, allNames) {
+      writeFileMD5(dest, s);
+    }
+  }
+}
+
 QString calcFileMD5() {
   // First, generate flist.txt
   // flist.txt is a file contains all md5sum for code files
@@ -180,12 +197,13 @@ QString calcFileMD5() {
     qFatal("Cannot open flist.txt. Quitting.");
   }
 
+  writeFkVerMD5(flist);
   writeDirMD5(flist, "packages", "*.lua");
   writeDirMD5(flist, "packages", "*.qml");
   writeDirMD5(flist, "packages", "*.js");
-  writeDirMD5(flist, "lua", "*.lua");
-  writeDirMD5(flist, "Fk", "*.qml");
-  writeDirMD5(flist, "Fk", "*.js");
+  // writeDirMD5(flist, "lua", "*.lua");
+  // writeDirMD5(flist, "Fk", "*.qml");
+  // writeDirMD5(flist, "Fk", "*.js");
 
   // then, return flist.txt's md5
   flist.close();

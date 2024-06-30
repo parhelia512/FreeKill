@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "client.h"
-#include "util.h"
+#include "client/client.h"
+#include "core/util.h"
 using namespace fkShell;
 
-#include "packman.h"
-#include "server.h"
-
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
-#include "shell.h"
-#endif
+#include "core/packman.h"
+#include "server/server.h"
+#include "server/shell.h"
 
 #if defined(Q_OS_WIN32)
 #include "applink.c"
@@ -22,7 +19,7 @@ using namespace fkShell;
 #ifndef Q_OS_ANDROID
 #include <QQuickStyle>
 #endif
-#include "qmlbackend.h"
+#include "ui/qmlbackend.h"
 #endif
 
 #if defined(Q_OS_ANDROID)
@@ -113,10 +110,15 @@ void fkMsgHandler(QtMsgType type, const QMessageLogContext &context,
     break;
   }
 
-  fprintf(stderr, "\r%02d/%02d ", date.month(), date.day());
-  fprintf(stderr, "%s ",
+#ifdef FK_USE_READLINE
+  ShellInstance->clearLine();
+#else
+  printf("\r");
+#endif
+  printf("%02d/%02d ", date.month(), date.day());
+  printf("%s ",
           QTime::currentTime().toString("hh:mm:ss").toLatin1().constData());
-  fprintf(file, "\r%02d/%02d ", date.month(), date.day());
+  fprintf(file, "%02d/%02d ", date.month(), date.day());
   fprintf(file, "%s ",
           QTime::currentTime().toString("hh:mm:ss").toLatin1().constData());
 
@@ -125,44 +127,49 @@ void fkMsgHandler(QtMsgType type, const QMessageLogContext &context,
 
   switch (type) {
   case QtDebugMsg:
-    fprintf(stderr, "%s[D] %s\n", threadName.constData(),
+    printf("%s[D] %s\n", threadName.constData(),
             localMsg.constData());
     fprintf(file, "%s[D] %s\n", threadName.constData(),
             localMsg.constData());
     break;
   case QtInfoMsg:
-    fprintf(stderr, "%s[%s] %s\n", threadName.constData(),
+    printf("%s[%s] %s\n", threadName.constData(),
             Color("I", Green).toUtf8().constData(), localMsg.constData());
     fprintf(file, "%s[%s] %s\n", threadName.constData(),
             "I", localMsg.constData());
     break;
   case QtWarningMsg:
-    fprintf(stderr, "%s[%s] %s\n", threadName.constData(),
+    printf("%s[%s] %s\n", threadName.constData(),
             Color("W", Yellow, Bold).toUtf8().constData(),
             localMsg.constData());
     fprintf(file, "%s[%s] %s\n", threadName.constData(),
             "W", localMsg.constData());
     break;
   case QtCriticalMsg:
-    fprintf(stderr, "%s[%s] %s\n", threadName.constData(),
+    printf("%s[%s] %s\n", threadName.constData(),
             Color("C", Red, Bold).toUtf8().constData(), localMsg.constData());
     fprintf(file, "%s[%s] %s\n", threadName.constData(),
             "C", localMsg.constData());
 #ifndef FK_SERVER_ONLY
     if (Backend != nullptr) {
-      Backend->notifyUI(
-          "ErrorDialog",
+      Backend->notifyUI("ErrorDialog",
           QString("⛔ %1/Error occured!\n  %2").arg(threadName).arg(localMsg));
     }
 #endif
     break;
   case QtFatalMsg:
-    fprintf(stderr, "%s[%s] %s\n", threadName.constData(),
+    printf("%s[%s] %s\n", threadName.constData(),
             Color("E", Red, Bold).toUtf8().constData(), localMsg.constData());
     fprintf(file, "%s[%s] %s\n", threadName.constData(),
             "E", localMsg.constData());
     break;
   }
+
+#ifdef FK_USE_READLINE
+  if (ShellInstance && !ShellInstance->lineDone()) {
+    ShellInstance->redisplay();
+  }
+#endif
 }
 
 // FreeKill 的程序主入口。整个程序就是从这里开始执行的。
@@ -231,11 +238,8 @@ int main(int argc, char *argv[]) {
       app->exit(1);
     } else {
       qInfo("Server is listening on port %d", serverPort);
-#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
-      // Linux 服务器的话可以启用一个 Shell 来操作服务器。
       auto shell = new Shell;
       shell->start();
-#endif
     }
     return app->exec();
   }
@@ -329,6 +333,7 @@ int main(int argc, char *argv[]) {
 #if defined(Q_OS_ANDROID)
   system = "Android";
 #elif defined(Q_OS_WIN32)
+  qputenv("QT_MEDIA_BACKEND", "windows");
   system = "Win";
   ::system("chcp 65001");
 #elif defined(Q_OS_LINUX)
