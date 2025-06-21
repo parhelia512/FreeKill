@@ -67,7 +67,12 @@ bool Room::isFull() const { return players.count() == capacity; }
 
 const QByteArray Room::getSettings() const { return settings; }
 
-void Room::setSettings(QByteArray settings) { this->settings = settings; }
+const QJsonObject Room::getSettingsObject() const { return settings_obj; }
+
+void Room::setSettings(QByteArray settings) {
+  this->settings = settings;
+  settings_obj = QJsonDocument::fromJson(settings).object();
+}
 
 bool Room::isAbandoned() const {
   if (players.isEmpty())
@@ -111,8 +116,7 @@ void Room::addPlayer(ServerPlayer *player) {
   }
 
   QJsonArray jsonData;
-  auto settings = QJsonDocument::fromJson(getSettings());
-  auto mode = settings["gameMode"].toString();
+  auto mode = settings_obj["gameMode"].toString();
 
   // 告诉房里所有玩家有新人进来了
   jsonData << player->getId();
@@ -131,7 +135,7 @@ void Room::addPlayer(ServerPlayer *player) {
   jsonData = QJsonArray();
   jsonData << this->capacity;
   jsonData << this->timeout;
-  jsonData << QJsonDocument::fromJson(this->settings).object();
+  jsonData << settings_obj;
   player->doNotify("EnterRoom", JsonArray2Bytes(jsonData));
 
   for (ServerPlayer *p : getOtherPlayers(player)) {
@@ -491,8 +495,7 @@ void Room::gameOver() {
   gameStarted = false;
   runned_players.clear();
   // 清理所有状态不是“在线”的玩家，增加逃率、游戏时长
-  auto settings = QJsonDocument::fromJson(this->settings);
-  auto mode = settings["gameMode"].toString();
+  auto mode = settings_obj["gameMode"].toString();
   QList<ServerPlayer *> players = this->players;
   QList<ServerPlayer *> to_delete;
 
@@ -571,15 +574,17 @@ void Room::manuallyStart() {
     for (auto i = ipList.cbegin(); i != ipList.cend(); i++) {
       if (i.value().length() <= 1) continue;
       auto warn = QString("*WARN* Same IP address: [%1]").arg(i.value().join(", "));
-      doBroadcastNotify(getPlayers(), "ServerMessage", warn.toUtf8());
-      qInfo("%s", warn.toUtf8().constData());
+      auto warnUtf8 = warn.toUtf8();
+      doBroadcastNotify(getPlayers(), "ServerMessage", warnUtf8);
+      qInfo("%s", warnUtf8.constData());
     }
 
     for (auto i = uuidList.cbegin(); i != uuidList.cend(); i++) {
       if (i.value().length() <= 1) continue;
       auto warn = QString("*WARN* Same device id: [%1]").arg(i.value().join(", "));
-      doBroadcastNotify(getPlayers(), "ServerMessage", warn.toUtf8());
-      qInfo("%s", warn.toUtf8().constData());
+      auto warnUtf8 = warn.toUtf8();
+      doBroadcastNotify(getPlayers(), "ServerMessage", warnUtf8);
+      qInfo("%s", warnUtf8.constData());
     }
 
     gameStarted = true;

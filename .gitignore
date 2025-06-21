@@ -7,6 +7,7 @@
 /en_US.qm
 /vi_VN.qm
 /fk_ver
+/fk_ver.bak
 
 # IDE & LSP
 /.kdev4/
@@ -35,6 +36,7 @@ freekill-wrap.cxx
 /freekill.server.info.log
 /flist.txt
 /server-list.json
+/resource_pak
 
 # windeployqt
 /bearer/
